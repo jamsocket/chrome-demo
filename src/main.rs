@@ -3,7 +3,7 @@ use actix_files::Files;
 use actix_web::{web, App, HttpServer};
 use browser_actor::BrowserActor;
 use logging::init_logging;
-use websocket::index;
+use websocket::{index, status};
 
 mod browser_actor;
 mod logging;
@@ -24,7 +24,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(browser.clone())
-            .route("/ws/", web::get().to(index))
+            .route("/ws", web::get().to(index))
+            .route("/status", web::get().to(status))
             .service(Files::new("/", "./static").index_file("index.html"))
     })
     .bind("0.0.0.0:8080")?

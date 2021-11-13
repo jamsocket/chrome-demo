@@ -3,7 +3,11 @@ function main() {
     let screen = document.getElementById("screen");
     let urlbar = document.getElementById("url");
 
-    let ws = new WebSocket("ws://localhost:8080/ws/");
+    var url = new URL(window.location);
+    url.pathname = 'ws';
+    url.protocol = (url.protocol === 'https') ? 'wss' : 'ws';
+
+    let ws = new WebSocket(url);
     ws.onmessage = function onMessage(message) {
         console.log('got message');
     
