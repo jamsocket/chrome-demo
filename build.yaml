@@ -2,7 +2,7 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:v1.6.0'
     args:
       - '--dockerfile=Dockerfile'
-      - '--destination=gcr.io/drifting-in-space/chrome-demo:$COMMIT_SHA'
+      - '--destination=gcr.io/drifting/chrome-demo:$COMMIT_SHA'
       - '--cache=true'
       - '--cache-ttl=336h'
 timeout: 3000s
