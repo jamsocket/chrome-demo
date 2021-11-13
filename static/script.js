@@ -4,7 +4,7 @@ function main() {
     let urlbar = document.getElementById("url");
 
     var url = new URL(window.location);
-    url.pathname = 'ws';
+    url.pathname += 'ws';
     url.protocol = (url.protocol === 'https:') ? 'wss' : 'ws';
 
     let ws = new WebSocket(url);
