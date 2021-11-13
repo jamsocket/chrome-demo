@@ -5,7 +5,7 @@ function main() {
 
     var url = new URL(window.location);
     url.pathname = 'ws';
-    url.protocol = (url.protocol === 'https') ? 'wss' : 'ws';
+    url.protocol = (url.protocol === 'https:') ? 'wss' : 'ws';
 
     let ws = new WebSocket(url);
     ws.onmessage = function onMessage(message) {
