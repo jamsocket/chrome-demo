@@ -21,7 +21,7 @@ use headless_chrome::{
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
-const TICK_MILLIS: u64 = 1000;
+const TICK_MILLIS: u64 = 100;
 
 #[derive(Message)]
 #[rtype("()")]
