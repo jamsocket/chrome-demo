@@ -15,7 +15,9 @@ async fn main() -> std::io::Result<()> {
 
     let mut args = std::env::args();
     args.next();
-    let initial_url = args.next().expect("Expected a single argument, the initial URL.");
+    let initial_url = args
+        .next()
+        .expect("Expected a single argument, the initial URL.");
 
     tracing::info!(%initial_url, "Starting browser.");
     let browser = BrowserActor::new(&initial_url).start();

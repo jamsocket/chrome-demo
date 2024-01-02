@@ -1,30 +1,26 @@
+use crate::websocket::{
+    BrowserAction, ConnectionInfo, SendScreenshot, SendUrl, WebsocketConnection,
+};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResult};
+use headless_chrome::{
+    browser::{default_executable, tab::point::Point},
+    protocol::cdp::Page::CaptureScreenshotFormatOption,
+    types::Bounds,
+    Browser, LaunchOptions, Tab,
+};
 use std::{
     collections::HashSet,
     sync::Arc,
     time::{Duration, SystemTime},
 };
 
-use crate::websocket::{
-    BrowserAction, ConnectionInfo, SendScreenshot, SendUrl, WebsocketConnection,
-};
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message, MessageResult};
-use headless_chrome::protocol::browser::Bounds;
-use headless_chrome::{
-    browser::{
-        default_executable,
-        tab::{get_key_definition, point::Point},
-    },
-    protocol::page::ScreenshotFormat,
-    Browser, LaunchOptions, Tab,
-};
-
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
+const WIDTH: f64 = 800.;
+const HEIGHT: f64 = 600.;
 
 const TICK_MILLIS: u64 = 100;
 
 #[derive(Message)]
-#[rtype("()")]
+#[rtype(result = "()")]
 struct Tick;
 
 pub struct BrowserActor {
@@ -32,7 +28,7 @@ pub struct BrowserActor {
     idle_since: Option<SystemTime>,
     _browser: Browser,
     tab: Arc<Tab>,
-    screen_data: Vec<u8>,
+    screen_data: Option<Vec<u8>>,
     url: String,
 }
 
@@ -50,8 +46,7 @@ impl BrowserActor {
         })
         .expect("Couldn't create browser.");
 
-        tracing::info!("Waiting on tab.");
-        let tab = browser.wait_for_initial_tab().unwrap();
+        let tab = browser.new_tab().unwrap();
         tab.set_bounds(Bounds::Normal {
             left: Some(0),
             top: Some(0),
@@ -63,15 +58,15 @@ impl BrowserActor {
 
         tab.navigate_to(initial_url).unwrap();
 
-        let screen_data = tab
-            .capture_screenshot(ScreenshotFormat::PNG, None, true)
-            .unwrap();
-        tracing::info!("Got screenshot. {}", screen_data.len());
+        // let screen_data = tab
+        //     .capture_screenshot(CaptureScreenshotFormatOption::Png, None, None, true)
+        //     .unwrap();
+        // tracing::info!("Got screenshot. {}", screen_data.len());
 
         BrowserActor {
             listeners: HashSet::default(),
             _browser: browser,
-            screen_data,
+            screen_data: None,
             tab,
             url: initial_url.to_string(),
             idle_since: Some(SystemTime::now()),
@@ -79,10 +74,17 @@ impl BrowserActor {
     }
 
     pub fn update(&mut self) {
-        let screen_data = self
-            .tab
-            .capture_screenshot(ScreenshotFormat::PNG, None, true)
-            .unwrap();
+        let screen_data =
+            match self
+                .tab
+                .capture_screenshot(CaptureScreenshotFormatOption::Png, None, None, true)
+            {
+                Ok(data) => data,
+                Err(err) => {
+                    tracing::error!(?err, "Error capturing screenshot.");
+                    return;
+                }
+            };
 
         let url = self.tab.get_url();
 
@@ -94,10 +96,10 @@ impl BrowserActor {
             tracing::info!("Updated URL");
         }
 
-        if screen_data != self.screen_data {
-            self.screen_data = screen_data;
+        if Some(&screen_data) != self.screen_data.as_ref() {
+            self.screen_data = Some(screen_data.clone());
             for listener in &self.listeners {
-                listener.do_send(SendScreenshot(self.screen_data.clone()))
+                listener.do_send(SendScreenshot(screen_data.clone()))
             }
             tracing::info!("Updated Screenshot");
         }
@@ -113,22 +115,24 @@ impl Actor for BrowserActor {
 }
 
 #[derive(Message)]
-#[rtype("()")]
+#[rtype(result = "()")]
 pub struct AddClientMessage(pub Addr<WebsocketConnection>);
 
 #[derive(Message)]
-#[rtype("()")]
+#[rtype(result = "()")]
 pub struct RemoveClientMessage(pub Addr<WebsocketConnection>);
 
 #[derive(Message)]
-#[rtype("ConnectionInfo")]
+#[rtype(result = "ConnectionInfo")]
 pub struct GetConnectionInfo;
 
 impl Handler<AddClientMessage> for BrowserActor {
     type Result = ();
 
     fn handle(&mut self, AddClientMessage(listener): AddClientMessage, _ctx: &mut Self::Context) {
-        listener.do_send(SendScreenshot(self.screen_data.clone()));
+        if let Some(screen_data) = &self.screen_data {
+            listener.do_send(SendScreenshot(screen_data.clone()));
+        }
         listener.do_send(SendUrl(self.url.clone()));
 
         self.listeners.insert(listener);
@@ -178,7 +182,6 @@ impl Handler<Tick> for BrowserActor {
     type Result = ();
 
     fn handle(&mut self, _: Tick, ctx: &mut Self::Context) -> Self::Result {
-        tracing::info!("Tick");
         self.update();
 
         ctx.notify_later(Tick, Duration::from_millis(TICK_MILLIS));
@@ -191,8 +194,8 @@ impl Handler<BrowserAction> for BrowserActor {
     fn handle(&mut self, msg: BrowserAction, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             BrowserAction::KeyPress { key } => {
-                if let Ok(key) = get_key_definition(&key) {
-                    self.tab.press_key(&key).unwrap();
+                if let Err(err) = self.tab.press_key(&key) {
+                    tracing::error!(?err, "Error pressing key.");
                 }
             }
             BrowserAction::Click { x, y } => {

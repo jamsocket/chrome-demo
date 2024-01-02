@@ -1,4 +1,6 @@
-use crate::browser_actor::{AddClientMessage, BrowserActor, GetConnectionInfo, RemoveClientMessage};
+use crate::browser_actor::{
+    AddClientMessage, BrowserActor, GetConnectionInfo, RemoveClientMessage,
+};
 use actix::{Actor, Addr, AsyncContext, Handler, Message, StreamHandler};
 use actix_web::web::Json;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
@@ -25,7 +27,7 @@ impl Actor for WebsocketConnection {
 }
 
 #[derive(Deserialize, Debug, Message)]
-#[rtype("()")]
+#[rtype(result = "()")]
 #[serde(tag = "action")]
 pub enum BrowserAction {
     #[serde(rename = "key")]
@@ -37,11 +39,11 @@ pub enum BrowserAction {
 }
 
 #[derive(Message)]
-#[rtype("()")]
+#[rtype(result = "()")]
 pub struct SendScreenshot(pub Vec<u8>);
 
 #[derive(Message)]
-#[rtype("()")]
+#[rtype(result = "()")]
 pub struct SendUrl(pub String);
 
 impl Handler<SendUrl> for WebsocketConnection {
