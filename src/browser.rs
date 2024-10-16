@@ -1,67 +1,47 @@
 use crate::types::Command;
-use fantoccini::{
-    actions::{InputSource, MouseActions, PointerAction, MOUSE_BUTTON_LEFT},
-    ClientBuilder,
+use headless_chrome::{
+    browser::tab::point::Point, protocol::cdp::Page::CaptureScreenshotFormatOption, Browser,
 };
-use std::time::Duration;
-use tokio::sync::{mpsc, watch};
+use std::{sync::mpsc, time::Duration};
+use tokio::sync::watch;
 
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
 const TICK_MILLIS: u64 = 100;
 
-pub struct Browser {
+pub struct HeadlessBrowser {
     frame_receiver: watch::Receiver<Option<Vec<u8>>>,
-    _handle: tokio::task::JoinHandle<()>,
+    _handle: std::thread::JoinHandle<()>,
     command_sender: mpsc::Sender<Command>,
 }
 
-async fn browser_loop(
-    sender: watch::Sender<Option<Vec<u8>>>,
-    mut url_receiver: mpsc::Receiver<Command>,
-    webdriver_url: String,
-) {
-    let browser = ClientBuilder::native()
-        .connect(&webdriver_url)
-        .await
-        .expect("failed to connect to WebDriver");
+fn browser_loop(sender: watch::Sender<Option<Vec<u8>>>, url_receiver: mpsc::Receiver<Command>) {
+    let browser = Browser::default().unwrap();
 
-    browser.goto("about:blank").await.unwrap();
+    let tab = browser.new_tab().unwrap();
 
-    browser.set_window_size(WIDTH, HEIGHT).await.unwrap();
+    tab.navigate_to("about:blank").unwrap();
 
     let mut last_screen_data: Option<Vec<u8>> = None;
 
     loop {
-        let screen_data = browser.screenshot().await.unwrap();
+        let screen_data = tab
+            .capture_screenshot(CaptureScreenshotFormatOption::Png, None, None, true)
+            .unwrap();
 
         match url_receiver.try_recv() {
             Ok(Command::Navigate { url: new_url }) => {
                 tracing::info!(%new_url, "Navigating to new URL.");
-                browser.goto(&new_url).await.unwrap();
+                tab.navigate_to(&new_url).unwrap();
             }
 
             Ok(Command::Click { x, y }) => {
-                let actions = MouseActions::new("mouse".to_string())
-                    .then(PointerAction::MoveTo {
-                        duration: None,
-                        x,
-                        y,
-                    })
-                    .then(PointerAction::Down {
-                        button: MOUSE_BUTTON_LEFT,
-                    })
-                    .then(PointerAction::Up {
-                        button: MOUSE_BUTTON_LEFT,
-                    });
-
                 tracing::info!(%x, %y, "Clicking.");
-                browser.perform_actions(actions).await.unwrap();
+                tab.click_point(Point { x, y }).unwrap();
                 tracing::info!("Clicked.");
             }
 
             Ok(Command::Key { key }) => {
                 tracing::info!(%key, "Typing.");
+                tab.type_str(&key).unwrap();
             }
 
             Err(_) => (),
@@ -75,23 +55,23 @@ async fn browser_loop(
             let _ = sender.send(Some(screen_data));
         }
 
-        tokio::time::sleep(Duration::from_millis(TICK_MILLIS)).await;
+        std::thread::sleep(Duration::from_millis(TICK_MILLIS));
     }
 }
 
-impl Browser {
-    pub fn new(initial_url: &str, webdriver_url: String) -> Self {
+impl HeadlessBrowser {
+    pub fn new(initial_url: &str) -> Self {
         let (frame_sender, frame_receiver) = watch::channel(None);
-        let (command_sender, command_receiver) = mpsc::channel(30);
-        let handle = tokio::spawn(browser_loop(frame_sender, command_receiver, webdriver_url));
+        let (command_sender, command_receiver) = mpsc::channel();
+        let handle = std::thread::spawn(move || browser_loop(frame_sender, command_receiver));
 
         command_sender
-            .try_send(Command::Navigate {
+            .send(Command::Navigate {
                 url: initial_url.to_string(),
             })
             .unwrap();
 
-        Browser {
+        HeadlessBrowser {
             _handle: handle,
             frame_receiver,
             command_sender,
@@ -103,6 +83,6 @@ impl Browser {
     }
 
     pub fn send_command(&self, command: Command) {
-        self.command_sender.try_send(command).unwrap();
+        self.command_sender.send(command).unwrap();
     }
 }

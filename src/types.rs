@@ -7,7 +7,7 @@ pub enum Command {
     Navigate { url: String },
 
     #[serde(rename = "click")]
-    Click { x: i64, y: i64 },
+    Click { x: f64, y: f64 },
 
     #[serde(rename = "key")]
     Key { key: String },

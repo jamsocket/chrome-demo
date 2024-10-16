@@ -1,4 +1,4 @@
-FROM rust:latest as build
+FROM rust:latest AS build
 
 WORKDIR /work
 
@@ -6,15 +6,16 @@ COPY . .
 
 RUN cargo build --release
 
-FROM ubuntu:jammy
+FROM debian:latest
 
-RUN apt update
-RUN apt install -y fonts-noto
-RUN apt install chromium-browser -y
+RUN apt-get update && apt-get install -y chromium
 
 WORKDIR /work
+
+RUN useradd -m chrome
+USER chrome
 
 COPY --from=build /work/target/release/chrome-service /work/chrome-service
 COPY static /work/static
 
-ENTRYPOINT [ "/work/chrome-service", "https://google.com/" ]
+CMD [ "/work/chrome-service", "--initial-url", "https://google.com/" ]

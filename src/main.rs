@@ -1,3 +1,4 @@
+use crate::types::Command;
 use axum::extract::ws::Message;
 use axum::routing::get;
 use axum::{
@@ -5,7 +6,7 @@ use axum::{
     response::IntoResponse,
     Router,
 };
-use browser::Browser;
+use browser::HeadlessBrowser;
 use clap::Parser;
 use logging::init_logging;
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -15,8 +16,6 @@ use tower_http::{
     services::ServeDir,
     trace::{DefaultMakeSpan, TraceLayer},
 };
-
-use crate::types::Command;
 
 mod browser;
 mod logging;
@@ -34,7 +33,7 @@ struct Opts {
     webdriver_url: String,
 }
 
-async fn handle_socket(mut socket: WebSocket, browser: Arc<Browser>) {
+async fn handle_socket(mut socket: WebSocket, browser: Arc<HeadlessBrowser>) {
     let mut frame_receiver = browser.frame_receiver();
 
     loop {
@@ -81,7 +80,7 @@ async fn handle_socket(mut socket: WebSocket, browser: Arc<Browser>) {
 }
 
 async fn ws_handler(
-    State(browser): State<Arc<Browser>>,
+    State(browser): State<Arc<HeadlessBrowser>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, browser))
@@ -94,7 +93,7 @@ async fn main() {
     let args = Opts::parse();
 
     tracing::info!(%args.initial_url, "Starting browser.");
-    let browser = Arc::new(Browser::new(&args.initial_url, args.webdriver_url.clone()));
+    let browser = Arc::new(HeadlessBrowser::new(&args.initial_url));
     tracing::info!("Listening.");
 
     let app = Router::new()
